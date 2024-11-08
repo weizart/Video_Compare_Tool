@@ -4,7 +4,7 @@ from all_models import models
 
 data = pd.read_csv("video_data.csv")
 
-# 获取ID列表、模型名称列表，并构建视频路径字典
+# 获取ID列表、模型名称列表，构建视频路径字典
 ids = data["ID"].unique()
 # models = data.columns[5:]  # 从第5列开始为模型名称列
 video_paths = {
@@ -14,13 +14,13 @@ video_paths = {
 num_models = 14
 default_models = models[:6]
 
-# 定义函数：加载指定ID的Text Prompt
+# 加载指定ID的Text Prompt
 def load_prompt(id):
     row = data[data["ID"] == id].iloc[0]
     return row["Text Prompt"]
 
 
-# 定义函数：根据选择的模型动态生成视频框布局
+# 根据选择的模型动态生成视频框布局
 def extend_choices(choices):
     print(f"Extending choices: {choices}")
     extended = choices[:num_models] + (num_models - len(choices[:num_models])) * ['Null']
@@ -45,13 +45,11 @@ def update_videos(id,choices):
     print(f"Updated video boxes: {vidboxes}")
     return vidboxes
 
-# 定义函数：同步播放所有视频
-def sync_play(*videos):
-    # 返回每个视频的播放进度重置到0
-    return [(video, 0) if video else None for video in videos]
+# 触发 JavaScript
+def dummy_function():
+    return None
 
-
-# 创建Gradio界面
+# Gradio界面
 with gr.Blocks() as demo:
     gr.HTML("<center><h1>模型视频生成效果比较工具</h1></center>")
 
@@ -60,9 +58,8 @@ with gr.Blocks() as demo:
         id_selector = gr.Dropdown(label="选择ID", choices=ids.tolist(), interactive=True)
         prompt_display = gr.Textbox(label="Applied Prompt", interactive=False)
 
-    # 使用Accordion包装模型选择框
+    # 模型选择器
     with gr.Accordion('Model Selection'):
-        # 模型选择器
         model_selector = gr.CheckboxGroup(models, label=f"从以下{len(models)}个模型中选择以进行比较", value=default_models, interactive=True)
 
     with gr.Row():
@@ -77,8 +74,33 @@ with gr.Blocks() as demo:
     model_selector.change(fn=update_videos, inputs=[id_selector, model_selector], outputs=output)  # 传递 id_selector 作为输入
     model_selector.change(fn=extend_choices, inputs=model_selector, outputs=current_models)
     # 同步播放按钮
-    sync_button = gr.Button("同步播放视频")
-    sync_button.click(fn=sync_play, inputs=output, outputs=output)
-    # sync_button.click(fn=sync_play, inputs=video_display_area, outputs=video_display_area)
+    sync_button = gr.Button("同步播放视频", elem_id="sync-play-button")
+    sync_button.click(dummy_function)  # 触发 dummy_function 以触发 JavaScript
+
+ # 注入 JavaScript，通过监听特定按钮触发播放
+    gr.HTML("""
+    <script>
+        document.getElementById('sync-play-button').onclick = function() {
+            const videos = document.querySelectorAll('video');
+            videos.forEach(video => {
+                video.currentTime = 0; // 重置到开始
+                const tryPlay = () => {
+                    const playPromise = video.play();
+                    if (playPromise !== undefined) {
+                        playPromise
+                        .then(() => {
+                            console.log("Video is playing");
+                        })
+                        .catch(error => {
+                            console.log("Playback was prevented. Trying again...");
+                            requestAnimationFrame(tryPlay);
+                        });
+                    }
+                };
+                tryPlay();
+            });
+        };
+    </script>
+    """)
 
 demo.launch(allowed_paths=["/mnt/jfs-hdd/sora/samples/VideoGenEval-complete/VideoGen-Eval1.0/separate"])
